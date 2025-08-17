@@ -8,7 +8,7 @@ System dynamics and cost functions must be specified in child classes.
 
 import numpy as np
 
-def a2s(a, format_string ='{0:.4f} '):
+def a2s(a, format_string ='{0:.5f} '):
     ''' array to string '''
     if(len(a.shape)==0):
         return format_string.format(a);
@@ -216,9 +216,6 @@ class DDPSolver:
                 print("Current X_N", X_bar[-1,:])
 
             self.update_expected_cost_improvement()
-            exp_impr = alpha*self.d1 + 0.5*(alpha**2)*self.d2 
-            # exp_impr = self.d1 + 0.5*self.d2 
-            print("Expected improvement (linearized system)", exp_impr)
 
             # trajectory optimization with line search in each iteration
             # find the optimal of 2nd-order function (gradient descent), not directly find the optimal value by zero gradient point. 
@@ -227,8 +224,13 @@ class DDPSolver:
                 (X,U) = self.simulate_system(x0, U_bar + alpha*self.kk, self.KK, X_bar)
                 new_cost = self.cost(X, U)
 
+                exp_impr = alpha*self.d1 + 0.5*(alpha**2)*self.d2 
+                #  print("Expected improvement", exp_impr, "Real improvement", new_cost-cst)
                 relative_impr = (new_cost-cst)/exp_impr
-                print("Real improvement (considering nonlinearity)", new_cost-cst)
+                
+                if(relative_impr > self.min_cost_impr):
+                    print("Cost improved from %.3f to %.3f. Exp. impr %.3f. Rel. impr. %.1f%%" % (cst, new_cost, exp_impr, 1e2*relative_impr))
+                    line_search_succeeded = True
                 
                 # if(relative_impr > self.min_cost_impr):
                 #     print("Cost improved from %.3f to %.3f. Exp. impr %.3f. Rel. impr. %.1f%%" % (cst, new_cost, exp_impr, 1e2*relative_impr))

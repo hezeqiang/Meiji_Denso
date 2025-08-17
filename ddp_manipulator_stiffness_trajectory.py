@@ -13,7 +13,7 @@ from stiffnesscal import calculate_stiffness_matrix_local, calculate_stiffness_m
 from utils.robot_wrapper import RobotWrapper
 from utils.robot_loaders import load_ee_frame
 from utils.plot_traj import plot_frame, FrameAnimator
-from ddp import  a2s
+
 
 os.environ["PINOCCHIO_VIEWER"] = "meshcat"
 
@@ -57,7 +57,7 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
         pin.forwardKinematics(self.robot.model, self.robot.data, self.q0)
         pin.updateFramePlacements(self.robot.model, self.robot.data)
         self.initial_oMf = self.robot.data.oMf[self.ee_frame_id] # initial end effector frame in world frame
-        Kv = np.array([121000, 136000, 59100, 15300, 15100, 4110]) # stiffness vector of 6 of the robot joint
+        Kv = np.array([48000, 121000, 16100, 15300, 15100, 4110]) # stiffness vector of 6 of the robot joint
         self.stiffness_matrix_inv = np.diag(1/Kv) # Diagonal matrix with Kv_inv as diagonal elements
 
         self.plant_height = self.initial_oMf.translation[2] # height of the plant, used to calculate the stiffness matrix
@@ -69,7 +69,6 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
         self.Fx = np.eye(self.nx) # 3 times 3
         self.Fu = np.zeros((self.nx, self.nu)) # 3 times 2
         self.dx = np.zeros(self.nx) # 3 
-
 
         
     ''' System dynamics '''
@@ -84,7 +83,7 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
     def f_x(self, x, u):
         ''' Partial derivatives of system dynamics w.r.t. x '''
         self.Fx[0, 2]= -self.dt * u[0] * np.sin(x[2])  # d(alpha)/d(theta)
-        self.Fx[1, 2]= self.dt * u[0] * np.cos(x [2]) # d(beta)/d(theta)
+        self.Fx[1, 2]= self.dt * u[0] * np.cos(x[2]) # d(beta)/d(theta)
         return self.Fx
         
     def f_u(self, x, u):
@@ -114,7 +113,7 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
 
     def IK_step(self, target_x: np.ndarray,
                 q_init: np.ndarray = np.array([0, 39.6, 102.8, 0, -52.38, 0]) *2*np.pi / 360,
-                tol: float = 1e-5,
+                tol: float = 1e-4,
                 max_iter: int = 10,
                 damping: float = 1e-10) -> np.ndarray:
         """
@@ -164,10 +163,10 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
             
             error_norm = np.linalg.norm(error_twist)
             # Check convergence
-            if error_norm < tol:
-                if self.DEBUG:
-                    print(f"IK converged in {i} iterations with error norm: {error_norm:.6f}")
-                break
+            # if error_norm < tol:
+            #     if self.DEBUG:
+            #         print(f"IK converged in {i} iterations with error norm: {error_norm:.6f}")
+            #     break
             
             # Compute the Jacobian of the end-effector frame.
             J = pin.computeFrameJacobian(self.robot.model, self.robot.data, q , self.ee_frame_id, pin.ReferenceFrame.LOCAL)
@@ -180,9 +179,9 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
             q = pin.integrate(self.robot.model, q, dq * self.dt)
             self.q = q # Update instance variable
 
-        else:
-            if self.DEBUG:
-                print(f"IK did not converge within {max_iter} iterations. Final error norm: {error_norm:.6f}")
+        # else:
+        #     if self.DEBUG:
+        #         print(f"IK did not converge within {max_iter} iterations. Final error norm: {error_norm:.6f}")
 
         return self.q
 
@@ -245,23 +244,14 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
         ''' total cost (running+final) for state trajectory X and control trajectory U '''
         N = U.shape[0]
         cost = self.cost_final(X[-1,:],record_result=record_result)
-        print(f"cost_final: {cost:.5g}")
+        # print(f"cost_final: {cost:.5g}")
         for i in range(N):
             cost += self.cost_running(i, X[i,:], U[i,:])
         return cost
         
     def cost_running(self, i, x, u):
         ''' Running cost at time step i for state x and control u '''
-     
-        # # calculate the desired joint configuration for the end-effector pose
-        # q_des = self.IK_step(x , self.q_guess_IK)
-        # self.q_guess_IK = q_des # update the initial guess for the next IK step
-        # deviation, stiffness_matrix = self.spatial_deformation_calculation(q_des, self.stiffness_matrix_inv, self.ee_frame_id)
-        # stiffness_matrix in R 3x3 =[sigma_alpha, sigma_alphabeta, sigma_xz; sigma_alphabeta, sigma_beta, sigma_yz; sigma_zx, sigma_zy, sigma_zz]
-
-        cost = 0.5 * u.T @ self.lmbda @ u
-        # + 0.5 * self.lmbda_stiff * ((np.cos(self.phi)**2*sigma_alpha + np.sin(self.phi)**2*sigma_beta + 2*np.cos(self.phi)*np.sin(self.phi)*sigma_alphabeta)**2)
-
+        cost = 0.5 * u.T @ self.lmbda @ u 
         return cost
 
     def cost_final(self, x, record_result=False):
@@ -278,7 +268,14 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
 
         cost = 0.5 * self.lmbda_stiff * (np.cos(self.phi)**2*sigma_alpha + np.sin(self.phi)**2*sigma_beta + 2*np.cos(self.phi)*np.sin(self.phi)*sigma_alphabeta)**2
 
-        if record_result and cost<self.min_final_cost:
+        if (abs(x[0]) > self.max_alphabeta):
+            cost += 0.5 * 1000 * (abs(x[0])-self.max_alphabeta)**2
+            print("alpha is outside of the range")
+        if (abs(x[1]) > self.max_alphabeta):
+            cost += 0.5 * 1000 * (abs(x[1])-self.max_alphabeta)**2
+            print("beta is outside of the range")
+
+        if cost < self.min_final_cost:
             self.final_cost = cost
             self.best_alpha_stiffness = sigma_alpha
             self.best_beta_stiffness = sigma_beta
@@ -314,7 +311,7 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
     
     # final cost functions differentiation based on symmetrical finite-difference
     # central second-order finite differences
-    def cost_final_x(self, x, h=1e-5):
+    def cost_final_x(self, x, h=1e-4):
         ''' Gradient of the final cost w.r.t. x '''
         ''' l_f(x_N) =0.5 * lmbda_stiff (cos(phi)^2*sigma_alpha + sin(phi)^2*sigma_beta + 2*cos(phi)*sin(phi)*sigma_theta)^2 '''
         """∂L/∂x  (shape: (n_x,))"""
@@ -325,7 +322,7 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
             g[i] = (self.cost_final(xp) - self.cost_final(xm)) / (2.0 * h)
         return g
 
-    def cost_final_xx(self, x,  h=1e-5):
+    def cost_final_xx(self, x,  h=1e-4):
         ''' Hessian of the final cost w.r.t. x '''
         ''' l_f(x_N) =0.5 * lmbda_stiff (cos(phi)^2*sigma_alpha + sin(phi)^2*sigma_beta + 2*cos(phi)*sin(phi)*sigma_theta)^2 '''
         """∂²L/∂x²  (shape: (n_x, n_x))"""
@@ -359,14 +356,14 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
 
         self.l_x[-1,:]  = self.cost_final_x(X_bar[-1,:])
         self.l_xx[-1,:,:] = self.cost_final_xx(X_bar[-1,:])
-        print("cost of the last iteration", self.cost(X_bar, U_bar, record_result=True))
-        print("Best stiffenss alpha, beta, alphabeta", self.best_alpha_stiffness, self.best_beta_stiffness, self.best_alphabeta_stiffness)
+        # print("cost of the last iteration", self.cost(X_bar, U_bar, record_result=True))
+        # print("Best stiffenss alpha, beta, alphabeta", self.best_alpha_stiffness, self.best_beta_stiffness, self.best_alphabeta_stiffness)
         # here V is the P in my notes, the derivative of value function with respect to x and xx        
         V_xx[N,:,:] = self.l_xx[N,:,:] # initial value function at the last time step
         V_x[N,:]    = self.l_x[N,:] # initial value function at the last time step
-        if (self.DEBUG or 1):
-            print("V_x V_xx at the last time step",  (V_x[N,:]),  (V_xx[N,:,:]))
-            print("X_bar, U_bar at the last time step",  (X_bar[-1,:]),  (U_bar[-1,:]))
+        # if (self.DEBUG  ):
+        #     print("V_x V_xx at the last time step",  (V_x[N,:]),  (V_xx[N,:,:]))
+        #     print("X_bar, U_bar at the last time step",  (X_bar[-1,:]),  (U_bar[-1,:]))
 
         for i in range(N-1, -1, -1):
             if(self.DEBUG):
@@ -383,9 +380,8 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
             self.l_u[i,:]    = self.cost_running_u(i, X_bar[i,:], U_bar[i,:])
             self.l_uu[i,:,:] = self.cost_running_uu(i, X_bar[i,:], U_bar[i,:])
             self.l_xu[i,:,:] = self.cost_running_xu(i, X_bar[i,:], U_bar[i,:])
-            if(self.DEBUG or 0):
-                if (i==1):
-                    print("l_x, l_xx, l_u, l_uu, l_xu",  (self.l_x[i,rx]),  (self.l_xx[i,rx,:]),  (self.l_u[i,ru]),  (self.l_uu[i,ru,:]),  (self.l_xu[i,rx,0]))
+            # if(self.DEBUG  ):
+            #     print("l_x, l_xx, l_u, l_uu, l_xu",  (self.l_x[i,rx]),  (self.l_xx[i,rx,:]),  (self.l_u[i,ru]),  (self.l_uu[i,ru,:]),  (self.l_xu[i,rx,0]))
 
             # compute regularized cost-to-go
             self.Q_x[i,:]     = self.l_x[i,:] + A[i,:,:].T @ V_x[i+1,:]
@@ -394,10 +390,9 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
             self.Q_uu[i,:,:]  = self.l_uu[i,:,:] + B[i,:,:].T @ V_xx[i+1,:,:] @ B[i,:,:]
             self.Q_xu[i,:,:]  = self.l_xu[i,:,:] + A[i,:,:].T @ V_xx[i+1,:,:] @ B[i,:,:]
             
-            if(self.DEBUG or 0):
-                if (i==1):
-                    print("Q_x, Q_u, Q_xx, Q_uu, Q_xu",  (self.Q_x[i,rx]),  (self.Q_u[i,ru]), 
-                             (self.Q_xx[i,rx,:]),  (self.Q_uu[i,ru,:]),  (self.Q_xu[i,rx,0]))
+            # if(self.DEBUG  ):
+                # print("Q_x, Q_u, Q_xx, Q_uu, Q_xu",  (self.Q_x[i,rx]),  (self.Q_u[i,ru]), 
+                #     (self.Q_xx[i,rx,:]),  (self.Q_uu[i,ru,:]),  (self.Q_xu[i,rx,0]))
                 
             # regularize Q_uu by adding a small value to the diagonal
             # Qbar_uu = Q_uu + mu*I
@@ -406,9 +401,9 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
             Qbar_uu_pinv  = np.linalg.pinv(Qbar_uu) 
             self.kk[i,:]       = - Qbar_uu_pinv @ self.Q_u[i,:] # dk in my note
             self.KK[i,:,:]     = Qbar_uu_pinv @ self.Q_xu[i,:,:].T # Kk in my note
-            if(self.DEBUG):
-                print("Qbar_uu, Qbar_uu_pinv", (Qbar_uu),  (Qbar_uu_pinv))
-                print("dk, Kk",  (self.kk[i,ru]),  (self.KK[i,ru,rx]))
+            # if(self.DEBUG):
+            #     print("Qbar_uu, Qbar_uu_pinv", (Qbar_uu),  (Qbar_uu_pinv))
+            #     print("dk, Kk",  self.kk[i,:],  self.KK[i,:,:] )
                 
             # update Value function pk and Pk
             V_x[i,:]    = self.Q_x[i,:]  - self.Q_xu[i,:,:] @ Qbar_uu_pinv @ self.Q_u[i,:]
@@ -427,16 +422,19 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
         U = np.zeros((N, m))
         X[0, :] = x0
         for i in range(N):
-            if X_bar is None:
-                U[i] = U_bar[i]
-            else:
+            # if X_bar is None:
+            #     U[i] = U_bar[i]
+            #     X[i+1,:] = self.f(X[i,:], U[i,:]) # discrete-time system dynamics 
+            # else:
                 # feedback law: u = u_bar + alpha * K_i ( x - x_b
                 U[i,:] = U_bar[i,:] - np.dot(KK[i,:,:], (X[i,:]-X_bar[i,:])) # control law
-
-            X[i+1,:] = self.f(X[i,:], U[i,:]) # discrete-time system dynamics
-            if np.any(np.abs(X[i+1,:2]) > self.max_alphabeta):
-                X[i+1,:2] = X[i,:2]
-                U[i,0]    = 0
+                X[i+1,:] = self.f(X[i,:], U[i,:]) # discrete-time system dynamics 
+            
+            # if np.any(np.abs(X[i+1,:2]) > self.max_alphabeta):
+            #     U[i,:] = U_bar[i,:] - np.dot(KK[i,:,:], (X[i,:]-X_bar[i,:])) # control law
+            #     U[i,0]    = 0
+            #     X[i+1,:] = self.f(X[i,:], U[i,:]) # discrete-time system dynamics 
+                           
         return (X,U)
 
 
@@ -448,7 +446,7 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
         self.kk  = np.zeros((N,m))
         self.KK  = np.zeros((N,m,n))
         self.min_cost_q =  np.zeros((N,6)) # minimum cost q for the inverse kinematics, used to record the best trajectory
-        X_bar = None   # initial nominal state trajectory should be None, waiting to be rollout by the initial guess U_bar
+        X_bar = np.zeros((N,n))   # initial nominal state trajectory should be None, waiting to be rollout by the initial guess U_bar
 
         # derivatives of the cost function
         self.l_x = np.zeros((N+1, n))
@@ -465,57 +463,64 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
         self.Q_xu = np.zeros((N, n, m))
         
         converged = False
+        
+        (self.min_cost_X, self.min_cost_U) = self.simulate_system(x0,
+                                                  U_bar, 
+                                                  np.zeros((N,m,n)), 
+                                                  X_bar,
+                                                  record_result=True)
+
         for j in range(self.max_iter):
             print("\n*** Iter %d" % j)
             
             # compute nominal state trajectory X_bar
             (X_bar, U_bar) = self.simulate_system(x0,
-                                                  U_bar, 
-                                                  self.KK, 
-                                                  X_bar,
+                                                  self.min_cost_U , 
+                                                  np.zeros((N,m,n)), 
+                                                  self.min_cost_X,
                                                   record_result=True
                                                   )
             # mod 2 * pi in the theta
             X_bar[:,2] = np.mod(X_bar[:,2], 2*np.pi) # keep theta in [0, 2*pi]
 
             self.backward_pass(X_bar, U_bar, mu)
+            # print("kk:", self.kk)
+            # print("KK:", self.KK)
             
             # forward pass - line search
             alpha = 1 # feedforward gain of the kk (dk in my note)
             line_search_succeeded = False
             # compute costs for nominal trajectory and expected improvement model
             cst = self.cost(X_bar, U_bar, record_result=True)
-            if cst < self.min_cost:
-                self.min_cost = cst
-                self.min_cost_U = U_bar.copy()
-                self.min_cost_X = X_bar.copy()
-                for i in range(N):
-                    self.min_cost_q[i,:] = self.IK_step(self.min_cost_X[i,:] , self.q_guess_IK)
-                print("New minimum cost found: %.3f" % cst)
-            print("Current minimum cost X_N", self.min_cost_X[-1,:])
+            # if cst < self.min_cost:
+            #     self.min_cost = cst
+            #     self.min_cost_U = U_bar.copy()
+            #     self.min_cost_X = X_bar.copy()
+            #     for i in range(N):
+            #         self.min_cost_q[i,:] = self.IK_step(self.min_cost_X[i,:] , self.q_guess_IK)
+            #     print("New minimum cost found: %.3f" % cst)
+            # print("Current minimum cost X_N", self.min_cost_X[-1,:])
 
             self.update_expected_cost_improvement()
-            exp_impr = alpha*self.d1 + 0.5*(alpha**2)*self.d2 
-            # exp_impr = self.d1 + 0.5*self.d2 
-            print("Expected improvement (linearized system)", exp_impr)
+
 
             # trajectory optimization with line search in each iteration
             # find the optimal of 2nd-order function (gradient descent), not directly find the optimal value by zero gradient point. 
             # X_bar and U_bar are not updated in the line search, only the alpha is changed
             for jj in range(self.max_line_search_iter):
                 (X,U) = self.simulate_system(x0, U_bar + alpha*self.kk, self.KK, X_bar)
+                # print("Line search iteration %d" % (jj), U)
 
                 new_cost = self.cost(X, U)
 
-                relative_impr = (new_cost-cst)/exp_impr
-                print("X:", X[-1,:],"U(0):", U[0,:], "Real cost", new_cost)
 
-                # if(relative_impr > self.min_cost_impr):
-                #     print("Cost improved from %.3f to %.3f. Exp. impr %.3f. Rel. impr. %.1f%%" % (cst, new_cost, exp_impr, 1e2*relative_impr))
-                #     line_search_succeeded = True
+                exp_impr = alpha*self.d1 + 0.5*(alpha**2)*self.d2 
+                relative_impr = (new_cost-cst)/cst # (1-2)/1 =-1
+                # print("X:", X[-1,:],"U(0):", U[0,:])
+                # print("Real cost", new_cost)
 
-                if(new_cost < self.final_cost):
-                    print("Cost improved from %.3f to %.3f. Exp. impr %.3f. Rel. impr. %.1f%%" % (cst, new_cost, exp_impr, 1e2*relative_impr))
+                if(relative_impr < 0):
+                    print(" Cost improved from %.3f to %.3f. Rel. impr. %.1f%%" % ( cst, new_cost,  1e2*relative_impr))
                     line_search_succeeded = True
 
                 if(line_search_succeeded):
@@ -526,7 +531,16 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
                 else:
                     # line search failed due to overshoot, reduce alpha to reduce the step size
                     alpha = self.alpha_factor*alpha 
-            
+        
+            if new_cost < self.min_cost:
+                self.min_cost = new_cost
+                self.min_cost_U = U.copy()
+                self.min_cost_X = X.copy()
+                for i in range(N):
+                    self.min_cost_q[i,:] = self.IK_step(self.min_cost_X[i,:] , self.q_guess_IK)
+                print("New minimum cost found: %.3f" % new_cost)
+            print("Current minimum cost X_N", self.min_cost_X[-1,:])
+
             # after the all steps, update the mu if necessary before start the next iteration
             if(not line_search_succeeded):
                 mu = mu*self.mu_factor
@@ -560,30 +574,44 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
                     
         # compute nominal state trajectory X_bar
         (X_bar, U_bar) = self.simulate_system(x0, U_bar, self.KK, X_bar)
+    
         return (X_bar, U_bar, self.KK)
         
 
-    def print_statistics(self):
+    def print_statistics(self, X, U):
         # simulate system forward with computed control law
         print("\n**************************************** RESULTS ****************************************")
         
         # compute cost of each task
+        print("Min Effort", U[0,:])
+        print("Min X_N   ", X[-1,:])
+        print("Min Cost  ", self.cost(X, U))
 
-        print("Min Cost  ", self.min_cost)
-        print("Min Effort", np.linalg.norm(self.min_cost_U))
-        print("Min Effort", self.min_cost_U[0,:])
-        print("Min X_N   ", self.min_cost_X[-1,:])
-        print("best alpha stiffness", self.best_alpha_stiffness)
-        print("best beta stiffness", self.best_beta_stiffness)
-        print("best alphabeta stiffness", self.best_alphabeta_stiffness)
-        print("Final q", self.min_cost_q[-1,:])
-        pin.forwardKinematics(self.robot.model, self.robot.data, self.min_cost_q[-1,:])
-        pin.updateFramePlacements(self.robot.model, self.robot.data)
+        # print("best alpha stiffness", self.best_alpha_stiffness)
+        # print("best beta stiffness", self.best_beta_stiffness)
+        # print("best alphabeta stiffness", self.best_alphabeta_stiffness)
+        # print("Final q", self.min_cost_q[-1,:])
+        # pin.forwardKinematics(self.robot.model, self.robot.data, self.min_cost_q[-1,:])
+        # pin.updateFramePlacements(self.robot.model, self.robot.data)
 
-        # end effector frame in world frame
-        oMf = self.robot.data.oMf[self.ee_frame_id] 
-        # print("Final real end effector pose in world frame:", oMf)
-        print("Final real X in world frame:", oMf.translation[0]-0.6, oMf.translation[1], pin.rpy.matrixToRpy(oMf.rotation)[2])
+        # # end effector frame in world frame
+        # oMf = self.robot.data.oMf[self.ee_frame_id] 
+        # # print("Final real end effector pose in world frame:", oMf)
+        # print("Final real X in world frame:", oMf.translation[0]-0.6, oMf.translation[1], pin.rpy.matrixToRpy(oMf.rotation)[2])
+
+        print("X_bar trajectory:", X)
+
+        for x in X:
+            # calculate the desired joint configuration for the end-effector pose
+            q_des = self.IK_step(x , self.q_guess_IK)
+            # self.q_guess_IK = q_des # update the initial guess for the next IK step
+            deviation, stiffness_matrix = self.spatial_deformation_calculation(q_des, self.stiffness_matrix_inv, self.ee_frame_id)
+            # stiffness_matrix in R 3x3 =[sigma_alpha, sigma_alphabeta, sigma_xz; sigma_alphabeta, sigma_beta, sigma_yz; sigma_zx, sigma_zy, sigma_zz]
+            sigma_alpha = stiffness_matrix[0, 0]*1000000 # convert to um/N
+            sigma_beta = stiffness_matrix[1, 1]*1000000 # convert to um/N
+            sigma_alphabeta  = stiffness_matrix[0, 1]*1000000 # convert to um/N
+            cost = 0.5 * self.lmbda_stiff * (np.cos(self.phi)**2*sigma_alpha + np.sin(self.phi)**2*sigma_beta + 2*np.cos(self.phi)*np.sin(self.phi)*sigma_alphabeta)**2
+            print("stiffness values:", sigma_alpha, sigma_beta, sigma_alphabeta,"cost:", cost)
 
     def callback(self, X, U):
         pass
@@ -648,16 +676,16 @@ if __name__=='__main__':
     ddp_params = {}
     ddp_params['alpha_factor'] = 1 # line search factor of the step size, default 1 means full step, 0 means no step of u
     ddp_params['min_alpha_to_increase_mu'] = 0.1 # use small step size for convergence around the local minimum
-    ddp_params['max_line_search_iter'] = 6
+    ddp_params['max_line_search_iter'] = 5
     
     ddp_params['mu_factor'] = 3. # the scaling factor of the mu: regularization term, for not invertible system Quu
     ddp_params['mu_max'] = 1e0
     ddp_params['mu_min'] = 1e-8
 
-    ddp_params['min_cost_impr'] = 1e-1 # minimum cost improvement to increase mu. Large mu -> slow convergence
+    ddp_params['min_cost_impr'] = 1e-2 # minimum cost improvement to increase mu. Large mu -> slow convergence
     ddp_params['exp_improvement_threshold'] = 1e-3 # threshold to stop iteration
-    ddp_params['max_iter'] = 50 #  full loop itaration number forward + backward pass
-    DEBUG = False
+    ddp_params['max_iter'] = 10 #  full loop itaration number forward + backward pass
+    DEBUG = 0
 
 
     r = load_ee_frame() # example_robot_data.load("ur5", True) #loadUR()#
@@ -673,8 +701,8 @@ if __name__=='__main__':
     x_list = np.zeros((n, 360)) # 0-360 degrees, 1 state for each degree
 
     ''' COST FUNCTION  '''
-    lmbda = np.array([[50, 0], [0, 0.1]])         # control regularization
-    lmbda_stiff = 1     # final stiffness cost regularization
+    lmbda = np.array([[3, 0], [0, 3]])         # control regularization move and rotation
+    lmbda_stiff = 300    # final stiffness cost regularization
 
     robot.initVisualization(robot.q0) # initialize the robot configuration
     print("Displaying start")
@@ -682,7 +710,7 @@ if __name__=='__main__':
 
     # startup to seek for the first point with maximum x-axis stiffness
     solver = DDPSolverManipulatorStiffness_SE2("Denso", robot, ddp_params, lmbda_stiff, lmbda, dt, DEBUG=DEBUG)
-    solver.phi = 90/360*2*np.pi
+    solver.phi = 0/360*2*np.pi
 
     x0 = np.zeros(n) #initial state when q0 is used
     U_bar = np.zeros((N_STARTUP, m))        # initial guess for control inputs
@@ -710,7 +738,7 @@ if __name__=='__main__':
     plt.show()
 
 
-    solver.print_statistics()
+    solver.print_statistics(X,U)
 
 
     # KK (K_k in my note) is the feedback gain matrix, used to compute the control inputs

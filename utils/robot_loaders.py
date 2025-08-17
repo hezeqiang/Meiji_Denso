@@ -48,7 +48,7 @@ def load_ee_frame(URDF_FILENAME='', path=''):
         # Build the SE3 placement of the new frame w.r.t. that link
         # (pure translation, identity rotation)
         # ------------------------------------------------------------------
-        offset_xyz   = np.array([0.1, 0.0, 0.05]) # expressed in the coordinate frame of the link that follows, not world frame
+        offset_xyz   = np.array([0.01, 0.0, 0.01]) # expressed in the coordinate frame of the link that follows, not world frame
         M_offset     = pin.SE3.Identity()
         M_offset.rotation = np.array([[0, 0, -1],    # identity rotation
                                       [0, 1, 0],

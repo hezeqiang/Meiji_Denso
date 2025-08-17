@@ -96,7 +96,7 @@ if __name__ == "__main__":
     # )
     data = model.createData()
 
-    Kv = np.array([121000, 136000, 59100, 15300, 15100, 4110]) # stiffness vector of 6 of the robot joint
+    Kv = np.array([48000, 121000, 16100, 15300, 15100, 4110]) # stiffness vector of 6 of the robot joint
     Kv_inv = 1/Kv
     # Initialize the stiffness matrix
     stiffness_matrix_inv = np.diag(Kv_inv) # Diagonal matrix with Kv as diagonal elements
@@ -162,37 +162,39 @@ if __name__ == "__main__":
     )
     # print(f"space_linear_movement_rotation = {space_linear_movement}")
     print (f"Stiffness_matrix = {Stiffness_matrix}")
-    VISUALIZER = MeshcatVisualizer
 
-    # Added code for Meshcat visualizer realization
-    if VISUALIZER == MeshcatVisualizer:
-        try:
-            viz = MeshcatVisualizer(model, collision_model, visual_model)
-            viz.initViewer(open=True)
-        except ImportError as err:
-            print(
-                "Error while initializing the viewer. "
-                "It seems you should install Python meshcat"
-            )
-            print(err)
-            sys.exit(0)
 
-    # Added code for Meshcat visualizer realization
-    if VISUALIZER == GepettoVisualizer:
-        try:
-            viz = GepettoVisualizer(model, collision_model, visual_model)
-            viz.initViewer()
-        except ImportError as err:
-            print(
-                "Error while initializing the viewer. "
-                "It seems you should install Python meshcat"
-            )
-            print(err)
-            sys.exit(0)
+    # VISUALIZER = MeshcatVisualizer
 
-    viz.loadViewerModel()
-    viz.display(q)
-    viz.displayVisuals(True)
+    # # Added code for Meshcat visualizer realization
+    # if VISUALIZER == MeshcatVisualizer:
+    #     try:
+    #         viz = MeshcatVisualizer(model, collision_model, visual_model)
+    #         viz.initViewer(open=True)
+    #     except ImportError as err:
+    #         print(
+    #             "Error while initializing the viewer. "
+    #             "It seems you should install Python meshcat"
+    #         )
+    #         print(err)
+    #         sys.exit(0)
+
+    # # Added code for Meshcat visualizer realization
+    # if VISUALIZER == GepettoVisualizer:
+    #     try:
+    #         viz = GepettoVisualizer(model, collision_model, visual_model)
+    #         viz.initViewer()
+    #     except ImportError as err:
+    #         print(
+    #             "Error while initializing the viewer. "
+    #             "It seems you should install Python meshcat"
+    #         )
+    #         print(err)
+    #         sys.exit(0)
+
+    # viz.loadViewerModel()
+    # viz.display(q)
+    # viz.displayVisuals(True)
 
     input("Press ENTER to continue...")
 

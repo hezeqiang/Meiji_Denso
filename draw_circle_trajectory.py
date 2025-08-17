@@ -9,6 +9,9 @@ import numpy as np
 import meshcat.geometry as g
 import meshcat.transformations as tf
 from utils.meshcat_arrow import draw_arrow
+from spatial_deformation_cal import spatial_deformation_calculation
+import pandas as pd
+
 
 np.set_printoptions(precision=6, suppress=True)
 
@@ -55,6 +58,12 @@ target_pose = np.zeros((4, 4))
 target_pose[:3, 3] = x_list[:, -1]
 target_pose[3, 3] = 1.0
 
+lmbda_stiff =50 # stiffness regularization parameter
+cost_list = np.zeros(3600) # store the cost for each step
+sigma_alpha_list = np.zeros(3600) # store the stiffness in x direction
+sigma_beta_list = np.zeros(3600) # store the stiffness in y direction
+sigma_alphabeta_list = np.zeros(3600) # store the stiffness in xy direction
+
 for i in range(3600):
     # print("alpha, beta, theta of x:", x)
     alpha= x_list[0, i]
@@ -72,6 +81,37 @@ for i in range(3600):
     #     print("Initial end-effector pose in world frame:")
     #     print(oMf)
     q_list[:, i] = robot.IK_step(ee_frame_id, oMf, dt=dt)
+    phi= i / 10 * np.pi / 180  # convert to radians
+    pose = robot.oMf_calculation_ee(q_list[:, i], ee_frame_id) # calculate the end-effector pose in the world frame
+    pose_matrix = pose.homogeneous
+    _, stiffness_wrench_align_world = robot.spatial_deformation_calculation(q_list[:, i], stiffness_matrix_inv, ee_frame_id)
+
+    # if i == 0 or i == 450:
+    #     print(stiffness_wrench_align_world*10e3)  # print the stiffness in m/kN
+    sigma_alpha_list[i] = stiffness_wrench_align_world[0, 0]*1000000 # convert to um/N
+    sigma_beta_list[i] = stiffness_wrench_align_world[1, 1]*1000000 # convert to um/N
+    sigma_alphabeta_list[i] = stiffness_wrench_align_world[0, 1]*1000000 # convert to um/N
+    cost = 0.5 * lmbda_stiff * (np.cos(phi)**2*sigma_alpha_list[i] + np.sin(phi)**2*sigma_beta_list[i] + 2*np.cos(phi)*np.sin(phi)*sigma_alphabeta_list[i])**2
+    cost_list[i] = cost  # store the cost for each step
+
+
+print("cost_list:", cost_list)
+
+# Export cost list and stiffness data to Excel
+data_dict = {
+    'Angle_deg': np.arange(0, 360, 0.1),
+    'X_position': x_list[0, :],
+    'Y_position': x_list[1, :],
+    'Cost': cost_list,
+    'Sigma_alpha_um_per_N': sigma_alpha_list,
+    'Sigma_beta_um_per_N': sigma_beta_list,
+    'Sigma_alphabeta_um_per_N': sigma_alphabeta_list
+}
+
+df = pd.DataFrame(data_dict)
+csv_filename = '/home/he/Meiji_Denso/trajectory_cost_analysis.csv'
+df.to_csv(csv_filename, index=False)
+print(f"Data exported to {csv_filename}")
 
 # print(q_list)
 # oMf_zero = robot.oMf_calculation_ee(q_list[:, 1800], ee_frame_id) # calculate the end-effector pose in the world frame
@@ -83,16 +123,10 @@ try:
     while True:
         for i in range(3600):
             if i % 10 == 0:
-                robot.display(q_list[:, i])  # display the robot configuration
                 pose = robot.oMf_calculation_ee(q_list[:, i], ee_frame_id) # calculate the end-effector pose in the world frame
                 pose_matrix = pose.homogeneous
-                _, stiffness_wrench_align_world = robot.spatial_deformation_calculation(q_list[:, i], stiffness_matrix_inv, ee_frame_id)
-
-                if i == 0 or i == 450:
-                    print(stiffness_wrench_align_world*10e3)  # print the stiffness in m/kN
-
-
-                draw_arrow(robot, "stiffness", x_length = float(stiffness_wrench_align_world[0,0])*10e4, y_length = float(stiffness_wrench_align_world[1,1])*10e4, z_length = 1, XY_cross = float(stiffness_wrench_align_world[1,0])*10e4, pose_matrix = pose_matrix) # draw the end-effector frame in the world frame
+                robot.display(q_list[:, i])  # display the robot configuration
+                draw_arrow(robot, "stiffness", x_length = float(sigma_alpha_list[i])*10e-2, y_length = float(sigma_beta_list[i])*10e-2, z_length = 1, XY_cross = float(sigma_alphabeta_list[i])*10e-2, pose_matrix = pose_matrix) # draw the end-effector frame in the world frame
                 time.sleep(dt/5)  # wait for dt seconds
 
 
