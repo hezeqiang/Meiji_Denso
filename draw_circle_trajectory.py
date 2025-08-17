@@ -97,12 +97,45 @@ for i in range(3600):
 
 print("cost_list:", cost_list)
 
+# Set font to Times New Roman with fallback options
+plt.rcParams['font.family'] = ['Times New Roman', 'DejaVu Serif', 'serif']
+plt.rcParams['font.size'] = 12
+
+# Create a single plot showing the circle trajectory with radius affected by cost
+plt.figure(figsize=(8, 6))
+
+# Normalize cost squared to reasonable radius modulation
+cost_squared = np.sqrt(cost_list)
+cost_normalized = cost_squared / np.max(cost_squared) * 0.05  # scale to max 5cm modulation
+modulated_radius = radius + cost_normalized
+
+# Calculate modulated circle coordinates
+x_modulated = modulated_radius * np.cos(angle)
+y_modulated = modulated_radius * np.sin(angle)
+
+plt.plot(x_list[0, :]-0.6, x_list[1, :], 'b--', alpha=0.5, label='Original Circle')
+plt.plot(x_modulated, y_modulated, 'r-', linewidth=2, label='Cost-Modulated Circle')
+plt.xlabel('X Position (m)', fontsize=10)
+plt.ylabel('Y Position (m)', fontsize=10)
+plt.title('Circle with Radius Modulated by Cost²', fontsize=14)
+plt.grid(True)
+plt.axis('equal')
+plt.legend(fontsize=10)
+
+plt.tight_layout()
+plt.savefig('/home/he/Meiji_Denso/circle_trajectory_analysis.png', dpi=300, bbox_inches='tight')
+plt.show()
+
 # Export cost list and stiffness data to Excel
 data_dict = {
     'Angle_deg': np.arange(0, 360, 0.1),
     'X_position': x_list[0, :],
     'Y_position': x_list[1, :],
+    'X_modulated': x_modulated,
+    'Y_modulated': y_modulated,
+    'Modulated_radius': modulated_radius,
     'Cost': cost_list,
+    'Cost_squared': cost_squared,
     'Sigma_alpha_um_per_N': sigma_alpha_list,
     'Sigma_beta_um_per_N': sigma_beta_list,
     'Sigma_alphabeta_um_per_N': sigma_alphabeta_list
