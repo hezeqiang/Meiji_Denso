@@ -286,11 +286,11 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
             cost += 0.5 * 1000 * (abs(x[1])-self.max_alphabeta)**2
             print("beta is outside of the range")
 
-        if cost < self.min_final_cost:
-            self.final_cost = cost
-            self.best_alpha_stiffness = sigma_alpha
-            self.best_beta_stiffness = sigma_beta
-            self.best_alphabeta_stiffness = sigma_alphabeta
+        # if cost < self.min_final_cost:
+        #     self.final_cost = cost
+        #     self.best_alpha_stiffness = sigma_alpha
+        #     self.best_beta_stiffness = sigma_beta
+        #     self.best_alphabeta_stiffness = sigma_alphabeta
         return cost
 
     # cost functions differentiation 
@@ -505,6 +505,7 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
             print("\n*** Iter %d" % j)
             print('Current minimum cost self.min_cost:', self.min_cost)
             print("Current minimum cost X_N", self.min_cost_X[-1,:])
+            print('Current minimum cost self.min_cost_X_N:', self.cost_final(self.min_cost_X[-1,:]))
             print('Current minimum cost self.min_cost_U:', self.min_cost_U[0,:])
             # print('Current minimum cost self.min_cost_X:', self.min_cost_X[0,:])
             
@@ -647,7 +648,8 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
             sigma_beta = stiffness_matrix[1, 1]*1000000 # convert to um/N
             sigma_alphabeta  = stiffness_matrix[0, 1]*1000000 # convert to um/N
             cost = 0.5 * self.lmbda_stiff * (np.cos(self.phi)**2*sigma_alpha + np.sin(self.phi)**2*sigma_beta + 2*np.cos(self.phi)*np.sin(self.phi)*sigma_alphabeta)**2
-            print("stiffness values:", sigma_alpha, sigma_beta, sigma_alphabeta,"x",x,"cost:", cost)
+            print("stiffness values:", sigma_alpha, sigma_beta, sigma_alphabeta)
+            print("x",x,"cost:", cost)
 
     def callback(self, X, U):
         pass

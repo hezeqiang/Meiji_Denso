@@ -17,7 +17,7 @@ np.set_printoptions(precision=6, suppress=True)
 
 ''' draw a circle trajectory for the end-effector of a robot '''
 
-Kv = np.array([121000, 136000, 59100, 15300, 15100, 4110]) # stiffness vector of 6 of the robot joint
+Kv = np.array([48000, 121000, 16100, 15300, 15100, 4110]) # stiffness vector of 6 of the robot joint
 Kv_inv = 1/Kv
 stiffness_matrix_inv = np.diag(1/Kv)
 
@@ -113,8 +113,8 @@ modulated_radius = radius + cost_normalized
 x_modulated = modulated_radius * np.cos(angle)
 y_modulated = modulated_radius * np.sin(angle)
 
-plt.plot(x_list[0, :]-0.6, x_list[1, :], 'b--', alpha=0.5, label='Original Circle')
-plt.plot(x_modulated, y_modulated, 'r-', linewidth=2, label='Cost-Modulated Circle')
+plt.plot(x_list[1, :], x_list[0, :]-0.6, 'b--', alpha=0.5, label='Original Circle')
+plt.plot(y_modulated, x_modulated, 'r-', linewidth=2, label='Cost-Modulated Circle')
 plt.xlabel('X Position (m)', fontsize=18)
 plt.ylabel('Y Position (m)', fontsize=18)
 plt.title('Circle with Radius Modulated by Cost²', fontsize=20)
