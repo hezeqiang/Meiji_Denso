@@ -14,9 +14,9 @@ LINE_WIDTH = 60
 
 q0 = np.array([0, 39.6, 102.8, 0, -52.38, 0]) *2*np.pi / 360 # initial configuration
 
-dt = 0.01*1               # DDP time step
+dt = 0.003*1               # DDP time step
 
-N_STARTUP = int(200/1)    # horizon size to seek for the first point with maximum x-axis stiffness
+N_STARTUP = int(25/1)    # horizon size to seek for the first point with maximum x-axis stiffness
 N = int(10/1)             # horizon size
 
 dt_sim = 1e-3

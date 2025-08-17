@@ -32,7 +32,7 @@ class FrameAnimator:
     Red arrow = x‐axis, green arrow = y‐axis.
     """
 
-    def __init__(self, poses, length=0.3, interval=200, 
+    def __init__(self, poses, length=0.3, interval=40, 
                  xlim=(0,1), ylim=(0,1), grid=True):
         self.poses    = np.asarray(poses)
         assert self.poses.ndim==2 and self.poses.shape[1]==3, \

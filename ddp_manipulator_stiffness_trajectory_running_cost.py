@@ -57,6 +57,7 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
         pin.forwardKinematics(self.robot.model, self.robot.data, self.q0)
         pin.updateFramePlacements(self.robot.model, self.robot.data)
         self.initial_oMf = self.robot.data.oMf[self.ee_frame_id] # initial end effector frame in world frame
+        print(f"Initial end effector frame in world frame: {self.initial_oMf}")
         Kv = np.array([48000, 121000, 16100, 15300, 15100, 4110]) # stiffness vector of 6 of the robot joint
         self.stiffness_matrix_inv = np.diag(1/Kv) # Diagonal matrix with Kv_inv as diagonal elements
 
@@ -253,7 +254,7 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
         ''' Running cost at time step i for state x and control u '''
      
         # calculate the desired joint configuration for the end-effector pose
-        q_des = self.IK_step(x , self.q_guess_IK)
+        q_des = self.IK_step(x+ [0.6,0,0] , self.q_guess_IK)
         # self.q_guess_IK = q_des # update the initial guess for the next IK step
         deviation, stiffness_matrix = self.spatial_deformation_calculation(q_des, self.stiffness_matrix_inv, self.ee_frame_id)
         # stiffness_matrix in R 3x3 =[sigma_alpha, sigma_alphabeta, sigma_xz; sigma_alphabeta, sigma_beta, sigma_yz; sigma_zx, sigma_zy, sigma_zz]
@@ -263,13 +264,20 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
 
         cost = 0.5 * u.T @ self.lmbda @ u + 0.5 * self.lmbda_stiff * ((np.cos(self.phi)**2*sigma_alpha + np.sin(self.phi)**2*sigma_beta + 2*np.cos(self.phi)*np.sin(self.phi)*sigma_alphabeta)**2)
 
+        if (abs(x[0]) > self.max_alphabeta):
+            cost += 0.5 * 10000000 * (abs(x[0])-self.max_alphabeta)**2
+            # print("alpha is outside of the range", 0.5 * 1000000 * (abs(x[0])-self.max_alphabeta)**2)
+        if (abs(x[1]) > self.max_alphabeta):
+            cost += 0.5 * 10000000 * (abs(x[1])-self.max_alphabeta)**2
+            # print("beta is outside of the range", 0.5 * 1000000 * (abs(x[1])-self.max_alphabeta)**2)
+
         return cost
 
     def cost_final(self, x, record_result=False):
         ''' Final cost for state x '''
         ''' Running cost at time step i for state x and control u '''
         # calculate the desired joint configuration for the end-effector pose
-        q_des = self.IK_step(x , self.q_guess_IK)
+        q_des = self.IK_step(x+ [0.6,0,0] , self.q_guess_IK)
         # self.q_guess_IK = q_des # update the initial guess for the next IK step
         deviation, stiffness_matrix = self.spatial_deformation_calculation(q_des, self.stiffness_matrix_inv, self.ee_frame_id)
         # stiffness_matrix in R 3x3 =[sigma_alpha, sigma_alphabeta, sigma_xz; sigma_alphabeta, sigma_beta, sigma_yz; sigma_zx, sigma_zy, sigma_zz]
@@ -280,11 +288,11 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
         cost = 0.5 * self.lmbda_stiff * (np.cos(self.phi)**2*sigma_alpha + np.sin(self.phi)**2*sigma_beta + 2*np.cos(self.phi)*np.sin(self.phi)*sigma_alphabeta)**2
 
         if (abs(x[0]) > self.max_alphabeta):
-            cost += 0.5 * 1000 * (abs(x[0])-self.max_alphabeta)**2
-            print("alpha is outside of the range")
+            cost += 0.5 * 10000000 * (abs(x[0])-self.max_alphabeta)**2
+            # print("alpha is outside of the range", 0.5 * 1000000 * (abs(x[0])-self.max_alphabeta)**2)
         if (abs(x[1]) > self.max_alphabeta):
-            cost += 0.5 * 1000 * (abs(x[1])-self.max_alphabeta)**2
-            print("beta is outside of the range")
+            cost += 0.5 * 10000000 * (abs(x[1])-self.max_alphabeta)**2
+            # print("beta is outside of the range", 0.5 * 1000000 * (abs(x[1])-self.max_alphabeta)**2)
 
         # if cost < self.min_final_cost:
         #     self.final_cost = cost
@@ -293,9 +301,31 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
         #     self.best_alphabeta_stiffness = sigma_alphabeta
         return cost
 
+    def cost_stiffness(self, x, record_result=False):
+        ''' Final cost for state x '''
+        ''' Running cost at time step i for state x and control u '''
+        # calculate the desired joint configuration for the end-effector pose
+        q_des = self.IK_step(x+ [0.6,0,0], self.q_guess_IK)
+        # self.q_guess_IK = q_des # update the initial guess for the next IK step
+        deviation, stiffness_matrix = self.spatial_deformation_calculation(q_des, self.stiffness_matrix_inv, self.ee_frame_id)
+        # stiffness_matrix in R 3x3 =[sigma_alpha, sigma_alphabeta, sigma_xz; sigma_alphabeta, sigma_beta, sigma_yz; sigma_zx, sigma_zy, sigma_zz]
+        sigma_alpha = stiffness_matrix[0, 0]*1000000 # convert to um/N
+        sigma_beta = stiffness_matrix[1, 1]*1000000 # convert to um/N
+        sigma_alphabeta  = stiffness_matrix[0, 1]*1000000 # convert to um/N
+
+        cost = 0.5 * self.lmbda_stiff * (np.cos(self.phi)**2*sigma_alpha + np.sin(self.phi)**2*sigma_beta + 2*np.cos(self.phi)*np.sin(self.phi)*sigma_alphabeta)**2
+
+        # if cost < self.min_final_cost:
+        #     self.final_cost = cost
+        #     self.best_alpha_stiffness = sigma_alpha
+        #     self.best_beta_stiffness = sigma_beta
+        #     self.best_alphabeta_stiffness = sigma_alphabeta
+        return cost
+
+
     # cost functions differentiation 
     # 0.5 * u.T @ self.lmbda @ u + 0.5 * self.lmbda_stiff * ((np.cos(self.phi)**2*sigma_alpha + np.sin(self.phi)**2*sigma_beta + 2*np.cos(self.phi)*np.sin(self.phi)*sigma_alphabeta)**2)
-    def cost_running_x(self, i, x, u,h=1e-4):
+    def cost_running_x(self, i, x, u,h=1e-2):
         ''' Gradient of the running cost w.r.t. x '''
         ''' l_f(x_N) =0.5 * lmbda_stiff (cos(phi)^2*sigma_alpha + sin(phi)^2*sigma_beta + 2*cos(phi)*sin(phi)*sigma_theta)^2 '''
         """∂L/∂x  (shape: (n_x,))"""
@@ -306,12 +336,12 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
             g[i] = (self.cost_running(i, xp, u) - self.cost_running(i, xm, u)) / (2.0 * h)
         return g
 
-    def cost_running_u(self, i, x, u,h=1e-4):
+    def cost_running_u(self, i, x, u,h=1e-2):
         ''' Gradient of the running cost w.r.t. u '''
         ''' l_k= 0.5 * u_k' * lmbda  u_k '''
         return self.lmbda @ u
     
-    def cost_running_xx(self, i, x, u,h=1e-4):
+    def cost_running_xx(self, i, x, u,h=1e-2):
         ''' l_f(x_N) =0.5 * lmbda_stiff (cos(phi)^2*sigma_alpha + sin(phi)^2*sigma_beta + 2*cos(phi)*sin(phi)*sigma_theta)^2 '''
         """∂²L/∂x²  (shape: (n_x, n_x))"""
         H = np.zeros((self.nx, self.nx))
@@ -322,12 +352,12 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
                        self.cost_running_x(i, xm, u, h)) / (2.0 * h)
         return 0.5 * (H + H.T)
 
-    def cost_running_uu(self, i, x, u,h=1e-4):
+    def cost_running_uu(self, i, x, u,h=1e-2):
         ''' Hessian of the running cost w.r.t. u '''
         ''' l_k= 0.5 * u_k' * lmbda  u_k '''
         return self.lmbda @ np.eye(self.nu)
         
-    def cost_running_xu(self, i, x, u,h=1e-4):
+    def cost_running_xu(self, i, x, u,h=1e-2):
         ''' Hessian of the running cost w.r.t. x and then w.r.t. u '''
         ''' l_f(x_N) =0.5 * lmbda_stiff (cos(phi)^2*sigma_alpha + sin(phi)^2*sigma_beta + 2*cos(phi)*sin(phi)*sigma_theta)^2 '''
         """∂²L/∂xu  (shape: (n_x, n_xu))"""
@@ -342,7 +372,7 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
     
     # final cost functions differentiation based on symmetrical finite-difference
     # central second-order finite differences
-    def cost_final_x(self, x, h=1e-4):
+    def cost_final_x(self, x, h=1e-2):
         ''' Gradient of the final cost w.r.t. x '''
         ''' l_f(x_N) =0.5 * lmbda_stiff (cos(phi)^2*sigma_alpha + sin(phi)^2*sigma_beta + 2*cos(phi)*sin(phi)*sigma_theta)^2 '''
         """∂L/∂x  (shape: (n_x,))"""
@@ -353,7 +383,7 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
             g[i] = (self.cost_final(xp) - self.cost_final(xm)) / (2.0 * h)
         return g
 
-    def cost_final_xx(self, x,  h=1e-4):
+    def cost_final_xx(self, x,  h=1e-2):
         ''' Hessian of the final cost w.r.t. x '''
         ''' l_f(x_N) =0.5 * lmbda_stiff (cos(phi)^2*sigma_alpha + sin(phi)^2*sigma_beta + 2*cos(phi)*sin(phi)*sigma_theta)^2 '''
         """∂²L/∂x²  (shape: (n_x, n_x))"""
@@ -505,7 +535,7 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
             print("\n*** Iter %d" % j)
             print('Current minimum cost self.min_cost:', self.min_cost)
             print("Current minimum cost X_N", self.min_cost_X[-1,:])
-            print('Current minimum cost self.min_cost_X_N:', self.cost_final(self.min_cost_X[-1,:]))
+            print('Current minimum cost self.min_cost_cost_stiffness:', self.cost_stiffness(self.min_cost_X[-1,:]))
             print('Current minimum cost self.min_cost_U:', self.min_cost_U[0,:])
             # print('Current minimum cost self.min_cost_X:', self.min_cost_X[0,:])
             
@@ -551,7 +581,7 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
                 exp_impr = alpha*self.d1 + 0.5*(alpha**2)*self.d2 
 
                 relative_impr = (new_cost-cst)/exp_impr # (99-100)/-2 =10.5
-                print("Line search iteration %d, alpha %.3f, cost %.3f, expected improvement %.3f, relative improvement %.1f%%" % (jj, alpha, new_cost, exp_impr, 1e2*relative_impr))
+                print("Line search iteration %d, alpha %.3f,old cost %.3f, new cost %.3f, expected improvement %.3f, relative improvement %.1f%%" % (jj, alpha, cst, new_cost, exp_impr, relative_impr))
                 # print("X:", X[-1,:],"U(0):", U[0,:])
                 # print("Real cost", new_cost)
 
@@ -573,9 +603,10 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
 
             self.min_cost = cst
             self.min_cost_U = U_bar 
-            self.min_cost_X = X_bar  
+            self.min_cost_X = X_bar
+
             for i in range(N):
-                self.min_cost_q[i,:] = self.IK_step(self.min_cost_X[i,:] , self.q_guess_IK)
+                self.min_cost_q[i,:] = self.IK_step(self.min_cost_X[i,:]+ [0.6,0,0] , self.q_guess_IK)
             print("New minimum cost found: %.3f" % cst)
             # print("Current minimum cost X_N", self.min_cost_X[-1,:])
 
@@ -640,7 +671,7 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
 
         for x in X:
             # calculate the desired joint configuration for the end-effector pose
-            q_des = self.IK_step(x , self.q_guess_IK)
+            q_des = self.IK_step(x+ [0.6,0,0] , self.q_guess_IK)
             # self.q_guess_IK = q_des # update the initial guess for the next IK step
             deviation, stiffness_matrix = self.spatial_deformation_calculation(q_des, self.stiffness_matrix_inv, self.ee_frame_id)
             # stiffness_matrix in R 3x3 =[sigma_alpha, sigma_alphabeta, sigma_xz; sigma_alphabeta, sigma_beta, sigma_yz; sigma_zx, sigma_zy, sigma_zz]
@@ -649,7 +680,7 @@ class DDPSolverManipulatorStiffness_SE2(DDPSolver):
             sigma_alphabeta  = stiffness_matrix[0, 1]*1000000 # convert to um/N
             cost = 0.5 * self.lmbda_stiff * (np.cos(self.phi)**2*sigma_alpha + np.sin(self.phi)**2*sigma_beta + 2*np.cos(self.phi)*np.sin(self.phi)*sigma_alphabeta)**2
             print("stiffness values:", sigma_alpha, sigma_beta, sigma_alphabeta)
-            print("x",x,"cost:", cost)
+            print("x",x,"cost:", self.cost_stiffness(x, record_result=True))
 
     def callback(self, X, U):
         pass
@@ -739,7 +770,7 @@ if __name__=='__main__':
     x_list = np.zeros((n, 360)) # 0-360 degrees, 1 state for each degree
 
     ''' COST FUNCTION  '''
-    lmbda = np.array([[3, 0], [0, 3]])         # control regularization move and rotation
+    lmbda = np.array([[4, 0], [0, 1]])         # control regularization move and rotation
     lmbda_stiff = 50   # final stiffness cost regularization
 
     robot.initVisualization(robot.q0) # initialize the robot configuration
@@ -766,7 +797,7 @@ if __name__=='__main__':
     # create the anime of the trajectory of the robot configuration
     print(X[-1,:])
     animator = FrameAnimator(
-        [X[i,:] for i in range(0, len(X), 5)],
+        [X[i,:] for i in range(0, len(X), 1)],
         length=0.5,
         interval=100,
         xlim=(-1, 1),
