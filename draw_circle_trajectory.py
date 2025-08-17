@@ -99,7 +99,7 @@ print("cost_list:", cost_list)
 
 # Set font to Times New Roman with fallback options
 plt.rcParams['font.family'] = ['Times New Roman', 'DejaVu Serif', 'serif']
-plt.rcParams['font.size'] = 12
+plt.rcParams['font.size'] = 20
 
 # Create a single plot showing the circle trajectory with radius affected by cost
 plt.figure(figsize=(8, 6))
@@ -115,12 +115,11 @@ y_modulated = modulated_radius * np.sin(angle)
 
 plt.plot(x_list[0, :]-0.6, x_list[1, :], 'b--', alpha=0.5, label='Original Circle')
 plt.plot(x_modulated, y_modulated, 'r-', linewidth=2, label='Cost-Modulated Circle')
-plt.xlabel('X Position (m)', fontsize=10)
-plt.ylabel('Y Position (m)', fontsize=10)
-plt.title('Circle with Radius Modulated by Cost²', fontsize=14)
+plt.xlabel('X Position (m)', fontsize=18)
+plt.ylabel('Y Position (m)', fontsize=18)
+plt.title('Circle with Radius Modulated by Cost²', fontsize=20)
 plt.grid(True)
 plt.axis('equal')
-plt.legend(fontsize=10)
 
 plt.tight_layout()
 plt.savefig('/home/he/Meiji_Denso/circle_trajectory_analysis.png', dpi=300, bbox_inches='tight')
